@@ -605,6 +605,12 @@ function renderSettings() {
   wrap.appendChild(_toggle(S.LB_SHOW_COPY_WF, true, "Copy WF Button", "Show copy workflow button in lightbox"));
   wrap.appendChild(_toggle(S.LB_SHOW_LOAD_WF, true, "Load Workflow Button", "Show load workflow button in lightbox"));
   wrap.appendChild(_toggle(S.LB_SHOW_COMPARE, true, "Compare Button", "Show compare button in lightbox"));
+  wrap.appendChild(_toggle(S.LB_SHOW_DELETE, true, "Delete Button", "Show delete button in lightbox"));
+
+  wrap.appendChild(h("div", { class: "sbg-gs-section-title", text: "File Operations", style: "margin-top:16px" }));
+  wrap.appendChild(_toggle(S.DELETE_TO_TRASH, true, "Move to Recycle Bin", "Send deleted images to the system Recycle Bin instead of permanently deleting them."));
+  wrap.appendChild(_toggle(S.CONFIRM_DELETE, true, "Confirm Before Delete", "Show confirmation dialog before deleting an image."));
+  wrap.appendChild(_toggle(S.CARD_QUICK_ACTIONS, true, "Card Quick Actions", "Show quick actions menu on thumbnail cards on hover."));
 
   wrap.appendChild(h("div", { class: "sbg-gs-section-title", text: "Lightbox Zoom", style: "margin-top:16px" }));
   wrap.appendChild(h("div", { class: "sbg-gs-desc", text: "Zoom and pan on the image or video in the lightbox. Pinch always zooms; drag pans when zoomed in." }));

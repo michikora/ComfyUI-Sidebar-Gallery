@@ -15,6 +15,7 @@ import {
   singleFlight,
   searchState, highlightSearchMatches,
   S, getSetting, APP_REGISTRY,
+  showConfirmModal,
 } from "./sbg-core.js";
 
 import * as TL from "./sbg-translation-layer.js";
@@ -168,12 +169,14 @@ export function openLightbox(_initialItems, startItemOrIndex, openEvent) {
   const copyWfBtn = h("button", { class: "sbg-btn sbg-btn--sm", text: "Copy WF", title: "Copy workflow JSON", disabled: "true" });
 
   const compareBtn = h("button", { class: "sbg-btn sbg-btn--sm", text: COMPARE_LABEL, title: `Compare with another file${keyCompare ? ` (${keyCompare})` : ""}` });
+  const deleteBtn = h("button", { class: "sbg-btn sbg-btn--sm sbg-btn--danger", text: "Delete", title: "Delete image" });
 
   if (!getSetting(S.LB_SHOW_DOWNLOAD, true)) dlBtn.style.display = "none";
   if (!getSetting(S.LB_SHOW_COPY_PROMPT, true)) copyPromptBtn.style.display = "none";
   if (!getSetting(S.LB_SHOW_COPY_WF, true)) copyWfBtn.style.display = "none";
   if (!getSetting(S.LB_SHOW_LOAD_WF, true)) loadWfBtn.style.display = "none";
   if (!getSetting(S.LB_SHOW_COMPARE, true)) compareBtn.style.display = "none";
+  if (!getSetting(S.LB_SHOW_DELETE, true)) deleteBtn.style.display = "none";
 
   const _lbcDl = getSetting(S.LB_COLOR_DOWNLOAD, "");
   const _lbcCp = getSetting(S.LB_COLOR_COPY_PROMPT, "");
@@ -188,7 +191,7 @@ export function openLightbox(_initialItems, startItemOrIndex, openEvent) {
 
   const bottomBar = h("div", { class: "sbg-lb__bottom" }, [
     bottomName,
-    h("div", { class: "sbg-lb__bottom-actions" }, [dlBtn, copyPromptBtn, copyWfBtn, loadWfBtn, compareBtn]),
+    h("div", { class: "sbg-lb__bottom-actions" }, [dlBtn, copyPromptBtn, copyWfBtn, loadWfBtn, compareBtn, deleteBtn]),
   ]);
 
   const mediaArea = h("div", { class: "sbg-lb__media-area" }, [
@@ -1270,6 +1273,8 @@ export function openLightbox(_initialItems, startItemOrIndex, openEvent) {
     { keys: keyLoadWf, run: () => { if (!loadWfBtn.disabled) loadWfBtn.click(); return true; } },
     { keys: keyPrev, run: _navRun(-1) },
     { keys: keyNext, run: _navRun(1) },
+    { keys: "Shift+Delete", run: () => { _handleDelete(true, true); return true; } },
+    { keys: "Delete", mods: "none", run: () => { _handleDelete(false, true); return true; } },
   ];
 
   // Two-pass dispatch: chunks with explicit modifiers ("Shift+a") are tried
@@ -1428,6 +1433,59 @@ export function openLightbox(_initialItems, startItemOrIndex, openEvent) {
       copyWfBtn.textContent = "Copy WF";
     }
   });
+
+  async function _handleDelete(forcePermanent = false, forceConfirm = false) {
+    const it = items[idx];
+    if (!it) return;
+
+    const isPermanent = forcePermanent || !getSetting(S.DELETE_TO_TRASH, true);
+    const needConfirm = forceConfirm || getSetting(S.CONFIRM_DELETE, true);
+
+    if (needConfirm) {
+      const msg = isPermanent
+        ? `<strong>WARNING</strong> This will permanently delete '${it.filename}' from disk. This action cannot be undone.`
+        : `Move '${it.filename}' to the Recycle Bin?`;
+
+      const ok = await showConfirmModal({
+        title: "Delete File",
+        message: msg,
+        confirmText: "Delete",
+        cancelText: "Cancel",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+
+    try {
+      const res = await fetch("/sidebar_gallery/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          root_id: it.root_id,
+          relpath: it.relpath,
+          trash: !isPermanent,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(`Delete failed: ${err.error || res.statusText}`);
+        return;
+      }
+      showToast(isPermanent ? "File permanently deleted" : "Moved to Recycle Bin");
+
+      items.splice(idx, 1);
+      if (items.length === 0) {
+        destroy();
+        return;
+      }
+      if (idx >= items.length) idx = items.length - 1;
+      goTo(idx);
+    } catch (e) {
+      showToast(`Delete failed: ${e?.message || e}`);
+    }
+  }
+
+  deleteBtn.addEventListener("click", () => _handleDelete(false, false));
 
   // In-lightbox comparison mode
   let _compareActive = false;

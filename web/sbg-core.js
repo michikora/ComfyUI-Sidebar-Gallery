@@ -243,6 +243,66 @@ export function confirmClick(btn, onConfirm, opts = {}) {
   });
 }
 
+export function showConfirmModal(opts = {}) {
+  return new Promise((resolve) => {
+    const title = opts.title || "Confirm";
+    const message = opts.message || "";
+    const confirmText = opts.confirmText || "Confirm";
+    const cancelText = opts.cancelText || "Cancel";
+    const danger = opts.danger !== false;
+
+    const overlay = h("div", { class: "sbg-confirm-overlay" });
+    const modal = h("div", { class: "sbg-confirm-modal" });
+
+    const titleEl = h("div", { class: "sbg-confirm-title", text: title });
+    const msgEl = h("div", { class: "sbg-confirm-message" });
+    if (typeof message === "string") {
+      msgEl.innerHTML = message;
+    } else if (message instanceof Node) {
+      msgEl.appendChild(message);
+    }
+
+    const cancelBtn = h("button", { class: "sbg-btn", text: cancelText });
+    const confirmBtn = h("button", {
+      class: `sbg-btn ${danger ? "sbg-btn--danger" : "sbg-btn--accent"}`,
+      text: confirmText,
+    });
+
+    const btns = h("div", { class: "sbg-confirm-btns" }, [cancelBtn, confirmBtn]);
+
+    modal.appendChild(titleEl);
+    modal.appendChild(msgEl);
+    modal.appendChild(btns);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    function cleanup(res) {
+      document.removeEventListener("keydown", onKey, true);
+      overlay.remove();
+      resolve(res);
+    }
+
+    function onKey(e) {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        e.preventDefault();
+        cleanup(false);
+      } else if (e.key === "Enter") {
+        e.stopPropagation();
+        e.preventDefault();
+        cleanup(true);
+      }
+    }
+
+    cancelBtn.onclick = (e) => { e.stopPropagation(); cleanup(false); };
+    confirmBtn.onclick = (e) => { e.stopPropagation(); cleanup(true); };
+    overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
+
+    document.addEventListener("keydown", onKey, true);
+    confirmBtn.focus();
+  });
+}
+
 export function copyText(text) {
   if (text == null || text === "") { showToast("Nothing to copy"); return; }
   const str = String(text);
@@ -701,6 +761,7 @@ export const S = {
   LB_SHOW_COPY_WF: "SBG.LbShowCopyWF",
   LB_SHOW_LOAD_WF: "SBG.LbShowLoadWF",
   LB_SHOW_COMPARE: "SBG.LbShowCompare",
+  LB_SHOW_DELETE: "SBG.LbShowDelete",
   LB_COLOR_DOWNLOAD: "SBG.LbColorDownload",
   LB_COLOR_COPY_PROMPT: "SBG.LbColorCopyPrompt",
   LB_COLOR_COPY_WF: "SBG.LbColorCopyWF",
@@ -729,6 +790,9 @@ export const S = {
   LB_ZOOM_SENSITIVITY: "SBG.LbZoomSensitivity",
   LB_COMPARE_ZOOM: "SBG.LbCompareZoom",
   LB_ZOOM_KEEP_ON_NAV: "SBG.LbZoomKeepOnNav",
+  DELETE_TO_TRASH: "SBG.DeleteToTrash",
+  CONFIRM_DELETE: "SBG.ConfirmDelete",
+  CARD_QUICK_ACTIONS: "SBG.CardQuickActions",
 };
 
 /* Source-app registry */

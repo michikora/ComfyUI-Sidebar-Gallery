@@ -212,6 +212,21 @@
   font-weight: 600;
 }
 
+.sbg-crumb-popup__item--disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.sbg-crumb-popup__item--danger {
+  transition: background var(--sbg-transition), color var(--sbg-transition);
+}
+
+.sbg-crumb-popup__item--danger:hover {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+}
+
 
 /* Search Row (full-width, own row) */
 
@@ -1100,9 +1115,44 @@
 }
 
 .sbg-card__info {
+  position: relative;
   padding: 4px 6px;
   font-size: 11px;
   overflow: hidden;
+}
+
+.sbg-card:hover .sbg-card__info {
+  padding-right: 28px;
+}
+
+.sbg-card__menu-btn {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  bottom: 2px;
+  width: 22px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--sbg-radius-sm);
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--sbg-border);
+  color: var(--sbg-text);
+  cursor: pointer;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1;
+  z-index: 2;
+  transition: all var(--sbg-transition);
+}
+
+.sbg-card:hover .sbg-card__menu-btn {
+  display: flex;
+}
+
+.sbg-card__menu-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: var(--sbg-border-hover);
 }
 
 .sbg-card__name {
@@ -1113,6 +1163,9 @@
 }
 
 .sbg-card__meta {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 10px;
   color: var(--sbg-text-dim);
   margin-top: 1px;
@@ -3081,3 +3134,57 @@ body.sbg-dragging-tab .sbg-ly3-tablist--empty {
 .sbg-ly3-pickitem:hover { background: rgba(124,106,239,0.18); }
 .sbg-ly3-pickname { font-size: 11.5px; }
 .sbg-ly3-pickpath { font-size: 8.5px; font-family: monospace; opacity: 0.4; }
+
+/* Card quick actions menu */
+.sbg-card-menu-popup {
+  min-width: 140px;
+}
+
+/* Confirmation dialog */
+.sbg-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100005;
+}
+
+.sbg-confirm-modal {
+  background: var(--sbg-surface);
+  border: 1px solid var(--sbg-border);
+  border-radius: var(--sbg-radius);
+  padding: 18px 22px;
+  max-width: 380px;
+  width: 90%;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sbg-confirm-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sbg-text);
+}
+
+.sbg-confirm-message {
+  font-size: 12px;
+  color: var(--sbg-text-dim);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.sbg-confirm-message strong {
+  color: #f87171;
+  font-weight: 700;
+}
+
+.sbg-confirm-btns {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 6px;
+}

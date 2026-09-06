@@ -4,6 +4,8 @@
  * Entry point: initGallery(mountEl, config) returns { state, fetchAllItems, ... }
  */
 
+import { app } from "../../scripts/app.js";
+
 import {
   _dataCache, searchState,
   _metaCache, _persistItems, _loadPersistedItems,
@@ -14,6 +16,7 @@ import {
   PLAY_SVG, IMG_FILTER_ICON, VID_FILTER_ICON, AUD_FILTER_ICON, SEARCH_SVG, GEAR_SVG,
   S, getSetting, applyCustomThemeVars,
   progressPoller, formatProgress,
+  showConfirmModal, copyText, fileUrl,
 } from "./sbg-core.js";
 
 import { SectionRegistry } from "./sbg-section-registry.js";
@@ -702,6 +705,179 @@ export function initGallery(mountEl, config) {
    * careful src/event cleanup. Cards are positioned absolutely for the
    * virtual scroll.
    */
+  async function _handleCardDelete(it) {
+    const isPermanent = !getSetting(S.DELETE_TO_TRASH, true);
+    const needConfirm = getSetting(S.CONFIRM_DELETE, true);
+
+    if (needConfirm) {
+      const msg = isPermanent
+        ? `<strong>WARNING</strong> This will permanently delete '${it.filename}' from disk. This action cannot be undone.`
+        : `Move '${it.filename}' to the Recycle Bin?`;
+
+      const ok = await showConfirmModal({
+        title: "Delete File",
+        message: msg,
+        confirmText: "Delete",
+        cancelText: "Cancel",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+
+    try {
+      const res = await fetch("/sidebar_gallery/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          root_id: it.root_id,
+          relpath: it.relpath,
+          trash: !isPermanent,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(`Delete failed: ${err.error || res.statusText}`);
+        return;
+      }
+      showToast(isPermanent ? "File permanently deleted" : "Moved to Recycle Bin");
+
+      const rid = it.root_id;
+      if (_dataCache.items[rid]) {
+        _dataCache.items[rid] = _dataCache.items[rid].filter(x => x.relpath !== it.relpath);
+      }
+      state.allItems = (state.allItems || []).filter(x => !(x.root_id === it.root_id && x.relpath === it.relpath));
+      state.filteredItems = (state.filteredItems || []).filter(x => !(x.root_id === it.root_id && x.relpath === it.relpath));
+
+      const ck = `${it.root_id}:${it.relpath}`;
+      _metaCache.delete(ck);
+      _metaCacheAPI.put(ck, null).catch(() => {});
+
+      renderFromScratch();
+      document.dispatchEvent(new CustomEvent("sbg-items-updated", { detail: { items: state.filteredItems } }));
+    } catch (e) {
+      showToast(`Delete failed: ${e?.message || e}`);
+    }
+  }
+
+  function _openCardMenu(it, btn) {
+    const anchorKey = `card:${it.root_id}:${it.relpath}`;
+    _toggleCrumbPopup(anchorKey, btn, () => {
+      const popup = h("div", { class: "sbg-crumb-popup sbg-card-menu-popup" });
+
+      const dlItem = h("div", { class: "sbg-crumb-popup__item", text: "Download" });
+      dlItem.onclick = () => {
+        _closeCrumbPopup();
+        const a = document.createElement("a");
+        a.href = fileUrl(it);
+        a.download = it.filename;
+        a.target = "_blank";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      };
+
+      const copyPromptItem = h("div", { class: "sbg-crumb-popup__item", text: "Copy Prompt" });
+      const copyWfItem = h("div", { class: "sbg-crumb-popup__item", text: "Copy Workflow" });
+      const loadWfItem = h("div", { class: "sbg-crumb-popup__item", text: "Load Workflow" });
+      const deleteItem = h("div", { class: "sbg-crumb-popup__item sbg-crumb-popup__item--danger", text: "Delete" });
+
+      copyPromptItem.classList.add("sbg-crumb-popup__item--disabled");
+      copyWfItem.classList.add("sbg-crumb-popup__item--disabled");
+      loadWfItem.classList.add("sbg-crumb-popup__item--disabled");
+
+      const ck = `${it.root_id}:${it.relpath}`;
+      const cached = _metaCache.get(ck);
+      const applyMeta = (meta) => {
+        const s = meta?.summary || {};
+        if (s.positive_prompt) {
+          copyPromptItem.classList.remove("sbg-crumb-popup__item--disabled");
+          copyPromptItem.onclick = () => {
+            _closeCrumbPopup();
+            const p = s.positive_prompt;
+            copyText(typeof p === "string" ? p : JSON.stringify(p));
+          };
+        }
+        if (s.has_workflow) {
+          copyWfItem.classList.remove("sbg-crumb-popup__item--disabled");
+          copyWfItem.onclick = async () => {
+            _closeCrumbPopup();
+            try {
+              let wf = meta.workflow;
+              if (!wf) {
+                const full = await api("/sidebar_gallery/metadata", { root_id: it.root_id, relpath: it.relpath });
+                wf = full.workflow;
+                meta.workflow = wf;
+              }
+              if (wf) copyText(typeof wf === "string" ? wf : JSON.stringify(wf));
+            } catch (e) {
+              showToast(`Failed: ${e?.message || e}`);
+            }
+          };
+
+          loadWfItem.classList.remove("sbg-crumb-popup__item--disabled");
+          loadWfItem.onclick = async () => {
+            _closeCrumbPopup();
+            try {
+              let wf = meta.workflow;
+              if (!wf) {
+                const full = await api("/sidebar_gallery/metadata", { root_id: it.root_id, relpath: it.relpath });
+                wf = full.workflow;
+                meta.workflow = wf;
+              }
+              if (wf && app) {
+                let parsed = typeof wf === "string" ? JSON.parse(wf) : wf;
+                app.loadGraphData(parsed);
+                showToast("Workflow loaded");
+              }
+            } catch (e) {
+              showToast(`Failed: ${e?.message || e}`);
+            }
+          };
+        }
+      };
+
+      if (cached) {
+        applyMeta(cached);
+      } else {
+        api("/sidebar_gallery/metadata", { root_id: it.root_id, relpath: it.relpath, summary_only: "1" })
+          .then((m) => {
+            if (m) {
+              _metaCache.set(ck, m);
+              applyMeta(m);
+            }
+          })
+          .catch(() => {});
+      }
+
+      deleteItem.onclick = () => {
+        _closeCrumbPopup();
+        _handleCardDelete(it);
+      };
+
+      popup.appendChild(dlItem);
+      popup.appendChild(copyPromptItem);
+      popup.appendChild(copyWfItem);
+      popup.appendChild(loadWfItem);
+      popup.appendChild(deleteItem);
+
+      setTimeout(() => {
+        if (!popup.isConnected) return;
+        const r = btn.getBoundingClientRect();
+        const pr = popup.getBoundingClientRect();
+        let top = r.bottom + 2;
+        if (top + pr.height > window.innerHeight) {
+          top = Math.max(0, r.top - pr.height - 2);
+        }
+        let left = r.right - pr.width;
+        if (left < 0) left = r.left;
+        popup.style.top = top + "px";
+        popup.style.left = left + "px";
+      }, 0);
+
+      return popup;
+    });
+  }
+
   function _createCard(it, index) {
     const shapeClass = thumbShape === "ar" ? "sbg-card__thumb-wrap--ar" : "sbg-card__thumb-wrap--square";
     const thumbWrap = h("div", { class: `sbg-card__thumb-wrap ${shapeClass}` });
@@ -777,6 +953,20 @@ export function initGallery(mountEl, config) {
         h("div", { class: "sbg-card__meta", text: `${fmtBytes(it.size)} · ${timeAgo(it.mtime)}` }),
       ]),
     ]);
+
+    if (getSetting(S.CARD_QUICK_ACTIONS, true)) {
+      const menuBtn = h("button", {
+        class: "sbg-card__menu-btn",
+        title: "Quick actions",
+        text: "⋮",
+        onclick: (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          _openCardMenu(it, menuBtn);
+        },
+      });
+      card.querySelector(".sbg-card__info").appendChild(menuBtn);
+    }
 
     if (it._matchedFields && state._searchMatches) {
       const _renames = getSectionRenames();

@@ -2174,3 +2174,85 @@ def _schedule_parser_version_check():
 
 
 _schedule_parser_version_check()
+
+
+def _trash_file(path: str) -> None:
+    try:
+        import send2trash
+        send2trash.send2trash(path)
+        return
+    except ImportError:
+        pass
+
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        class SHFILEOPSTRUCTW(ctypes.Structure):
+            _fields_ = [
+                ("hwnd", wintypes.HWND),
+                ("wFunc", wintypes.UINT),
+                ("pFrom", wintypes.LPCWSTR),
+                ("pTo", wintypes.LPCWSTR),
+                ("fFlags", wintypes.WORD),
+                ("fAnyOperationsAborted", wintypes.BOOL),
+                ("hNameMappings", wintypes.LPVOID),
+                ("lpszProgressTitle", wintypes.LPCWSTR),
+            ]
+
+        file_op = SHFILEOPSTRUCTW()
+        file_op.hwnd = None
+        file_op.wFunc = 3  # FO_DELETE
+        file_op.pFrom = os.path.abspath(path) + "\0\0"
+        file_op.pTo = None
+        file_op.fFlags = 0x0040 | 0x0010 | 0x0004  # FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT
+
+        res = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(file_op))
+        if res != 0 or file_op.fAnyOperationsAborted:
+            raise OSError(f"Failed to recycle file, code: {res}")
+        return
+
+    os.unlink(path)
+
+
+@routes.post("/sidebar_gallery/delete")
+async def delete_image(request: web.Request):
+    body, err = await _json_dict_body(request)
+    if err is not None:
+        return err
+
+    root_id = str(body.get("root_id") or "output")
+    relpath = str(body.get("relpath") or "")
+    trash = bool(body.get("trash", True))
+
+    root = _find_root(root_id)
+    if root is None:
+        return web.json_response({"error": "Root not found"}, status=404)
+
+    try:
+        full = safe_join(root.path, relpath)
+    except ValueError:
+        return web.json_response({"error": "Invalid path"}, status=400)
+
+    if not os.path.isfile(full):
+        return web.json_response({"error": "File not found"}, status=404)
+
+    loop = asyncio.get_running_loop()
+    try:
+        if trash:
+            await loop.run_in_executor(_IO_EXECUTOR, _trash_file, full)
+        else:
+            await loop.run_in_executor(_IO_EXECUTOR, os.unlink, full)
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+    relpath_norm = relpath.replace("\\", "/")
+    conn = media_db._get_conn()
+    try:
+        with conn:
+            media_db.delete_file(conn, root_id, relpath_norm)
+    finally:
+        conn.close()
+
+    media_db.record_removals(root_id, [relpath_norm], complete_since=0)
+    return web.json_response({"ok": True, "relpath": relpath})
